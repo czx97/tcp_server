@@ -51,7 +51,7 @@ int main(int argc,char *argv[])
 		if(FD_ISSET(lfd,&rset)){
 			clit_addr_len = sizeof(clit_addr);
 			cfd = accept(lfd,(struct sockaddr*)&clit_addr,&clit_addr_len);
-			printf("client ip:%s port:%d\n",
+			printf("client ip:%s port:%d connected...\n ",
 			inet_ntop(AF_INET,&clit_addr.sin_addr,client_IP,sizeof(client_IP)),
 			ntohs(clit_addr.sin_port));
 			FD_SET(cfd,&allset);
@@ -65,6 +65,9 @@ int main(int argc,char *argv[])
 				--ret;
 				int n = read(i,buf,sizeof(buf));
 				if(n==0){
+					printf("client ip:%s port:%d leave...\n",
+					inet_ntop(AF_INET,&clit_addr.sin_addr,client_IP,sizeof(client_IP)),
+					ntohs(clit_addr.sin_port));
 					close(i);
 					FD_CLR(i,&allset);
 				}
