@@ -3,6 +3,7 @@
 #include<sys/socket.h>   //socket通信
 #include<arpa/inet.h>    //socket通信
 #include<stdlib.h>        //C标准库
+#include<sys/epoll.h>      //epoll函数头文件
 #include<unistd.h>         //POSIX系统调用API
 //#include<string.h>         //字符串操作，与string并列存在
 #include<errno.h>          //通过错误码提示错误信息
@@ -17,8 +18,8 @@ void sys_err(const char *str){
 
 int main(int argc,char *argv[])
 {
-	int lfd ,cfd;
-	int ret;
+	int lfd ,cfd,epfd;
+	int ret,n;
 	printf("server waitting for connection...\n");
 	char buf[BUFSIZ],client_IP[1024];
 	struct sockaddr_in serv_addr,clit_addr;
@@ -37,49 +38,38 @@ int main(int argc,char *argv[])
 	if(ret ==-1)
 		sys_err("bind error");
 	listen(lfd,128);
-	fd_set rset,allset;
-	int maxfd=0;
-	maxfd = lfd;
-	FD_ZERO(&allset);
-	FD_SET(lfd,&allset);
+	struct epoll_event tmp,array[1024];
+	epfd = epoll_create(1024);
+	tmp.events = EPOLLIN;
+	tmp.data.fd = lfd;
+	epoll_ctl(epfd,EPOLL_CTL_ADD,lfd,&tmp);
 	while(1){
-		rset = allset;
-		ret = select(maxfd+1,&rset,NULL,NULL,NULL);
-		if(ret<0){
-		      	sys_err("select error");
-		}
-		if(FD_ISSET(lfd,&rset)){
-			clit_addr_len = sizeof(clit_addr);
-			cfd = accept(lfd,(struct sockaddr*)&clit_addr,&clit_addr_len);
-			printf("client ip:%s port:%d connected...\n ",
-			inet_ntop(AF_INET,&clit_addr.sin_addr,client_IP,sizeof(client_IP)),
-			ntohs(clit_addr.sin_port));
-			FD_SET(cfd,&allset);
-			if(cfd>maxfd)
-			       	maxfd = cfd;
-			if(0==--ret)
-			       	continue;
-		}
-		for(int i =lfd+1;i<=maxfd && ret;i++){
-			if(FD_ISSET(i,&rset)){
-				--ret;
-				int n = read(i,buf,sizeof(buf));
+		ret = epoll_wait(epfd,array,1024,-1);
+		for(int i=0;i<ret;i++){
+			if(array[i].data.fd == lfd){
+				cfd = accept(lfd,(struct sockaddr*)&clit_addr,&clit_addr_len);
+				printf("client ip:%s port:%d connected...\n ",
+				inet_ntop(AF_INET,&clit_addr.sin_addr,client_IP,sizeof(client_IP)),
+				ntohs(clit_addr.sin_port));
+				tmp.events = EPOLLIN;
+				tmp.data.fd = cfd;
+				epoll_ctl(epfd,EPOLL_CTL_ADD,cfd,&tmp);
+			}
+			else{
+				n = read(array[i].data.fd,buf,sizeof(buf));
 				if(n==0){
-					printf("client ip:%s port:%d leave...\n",
-					inet_ntop(AF_INET,&clit_addr.sin_addr,client_IP,sizeof(client_IP)),
-					ntohs(clit_addr.sin_port));
-					close(i);
-					FD_CLR(i,&allset);
+					close(array[i].data.fd);
+					epoll_ctl(epfd,EPOLL_CTL_DEL,array[i].data.fd,NULL);
 				}
-				for(int j = 0;j<n;j++){
-					buf[j]=toupper(buf[j]);
+				else if(n>0){
+					for(int i=0;i<n;i++){
+						buf[i] = toupper(buf[i]);
+					}
+					write(array[i].data.fd,buf,sizeof(buf));
 				}
-				write(cfd,buf,n);
-				write(STDOUT_FILENO,buf,n);
 
 			}
 		}
-
 	}
 
 	return 0;
